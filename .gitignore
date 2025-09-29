@@ -1,3 +1,6 @@
 .env
 .vscode
 venv
+logs
+utils/__pycache__
+__pycache__
