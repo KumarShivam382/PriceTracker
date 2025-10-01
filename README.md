@@ -65,4 +65,5 @@ Feel free to submit issues or pull requests if you have suggestions or improveme
 
 Issues faced/facing :
 mimicking a real browser : currently using selenium to automate browser opening to bypass ip blocking and rate limiter , will try to solve in next pr .
+uniqueness :- uniquely identify a product per user
 Currently working with flipkart and amazon urls only

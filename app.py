@@ -78,7 +78,7 @@ async def playwright_fetch(url):
             });
         """)
         
-        await page.goto(url, timeout=10000, wait_until='domcontentloaded')
+        await page.goto(url, timeout=7000, wait_until='domcontentloaded')
         await page.wait_for_timeout(500)  # Minimal delay for dynamic content
         html = await page.content()
         await browser.close()
@@ -87,6 +87,7 @@ async def playwright_fetch(url):
 async def scrapper(url: str):
     try:
         html = await playwright_fetch(url)
+        soup = BeautifulSoup(html, 'lxml')
         return html, url
     except Exception as e:
         print(f"❌ Playwright fetch failed: {e}")

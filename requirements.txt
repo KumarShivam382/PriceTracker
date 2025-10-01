@@ -1,5 +1,6 @@
 httpx
 beautifulsoup4
+lxml
 python-telegram-bot
 python-dotenv
 schedule
