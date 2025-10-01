@@ -7,7 +7,6 @@ This project is a Telegram bot that allows users to track product prices from Am
 ```
 price-tracker
 ├── app.py            # Main entry point of the application
-├── extractor.py      # Functions for extracting product information
 ├── notifier.py       # Sends notifications to users on price changes
 ├── poller.py         # Polls product pages every hour for price changes
 ├── requirements.txt   # Lists project dependencies
@@ -49,6 +48,11 @@ price-tracker
    python app.py
    ```
 
+## Technical Notes
+
+- **Connection Pooling:** The bot uses SQLAlchemy's connection pooling to manage database connections efficiently. Instead of opening a new connection for every request, a pool of connections is maintained and reused, which improves performance and reliability, especially when handling multiple users or frequent database access.
+- **Anti-bot Measures:** The scraper uses Playwright with anti-detection techniques to mimic real browser behavior and avoid being blocked by Amazon and Flipkart.
+
 ## Usage
 
 - Send a message to the bot with a product link from Amazon or Flipkart.
@@ -60,5 +64,5 @@ price-tracker
 Feel free to submit issues or pull requests if you have suggestions or improvements for the project.
 
 Issues faced/facing :
-mimicking a real browser
+mimicking a real browser : currently using selenium to automate browser opening to bypass ip blocking and rate limiter , will try to solve in next pr .
 Currently working with flipkart and amazon urls only
