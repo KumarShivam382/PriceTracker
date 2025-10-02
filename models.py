@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
 
@@ -16,8 +16,10 @@ class TrackedProduct(Base):
     __tablename__ = 'tracked_products'
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id'))
-    product_url = Column(String, nullable=False)
+    product_id = Column(String, nullable=False)  # ASIN or Flipkart product ID
+    product_url = Column(String, nullable=False) # Original/cleaned URL
     last_known_price = Column(String)
     last_checked = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
     user = relationship("User", back_populates="products")
+    __table_args__ = (UniqueConstraint('user_id', 'product_id', name='_user_product_uc'),)

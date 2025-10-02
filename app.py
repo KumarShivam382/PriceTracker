@@ -13,6 +13,7 @@ from models import Base, User, TrackedProduct
 from utils.amazon import extract_amazon_price
 from utils.flipkart import extract_flipkart_price
 from playwright.async_api import async_playwright
+import re
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -114,6 +115,28 @@ async def expand_url(url: str) -> str:
         print(f"❌ General error: {e}")
     return url
 
+# Helper functions to extract product IDs
+
+def extract_amazon_asin(url: str) -> str:
+    # Robustly extract ASIN from Amazon URLs
+    import re
+    # Handles /dp/ASIN, /gp/product/ASIN, and ignores query params
+    match = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})(?:[/?]|$)", url)
+    if match:
+        return match.group(1)
+    # Fallback: look for 10-char ASIN in the path
+    match = re.search(r"/([A-Z0-9]{10})(?:[/?]|$)", url)
+    if match:
+        return match.group(1)
+    return None
+
+def extract_flipkart_pid(url: str) -> str:
+    # Flipkart product ID is usually after 'pid=' in the URL
+    match = re.search(r"[?&]pid=([A-Z0-9]+)", url)
+    if match:
+        return match.group(1)
+    return None
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     loading_msg = await update.message.reply_text("⏳ Loading and extracting price...")
     user_input = update.message.text.strip()
@@ -134,13 +157,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         domain = urlparse(final_url).netloc.replace("www.", "")
         price = None
+        product_id = None
 
         if "amazon" in domain:
             print("Detected Amazon URL")
             price = await extract_amazon_price(html)
+            product_id = extract_amazon_asin(final_url)
         elif "flipkart" in domain:
             print("Detected Flipkart URL")
             price = await extract_flipkart_price(html)
+            product_id = extract_flipkart_pid(final_url)
 
         # --- Store user and product in DB ---
         try:
@@ -150,10 +176,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user = User(telegram_id=telegram_id, username=username)
                 session.add(user)
                 session.commit()
-            tracked = TrackedProduct(user_id=user.id, product_url=final_url, last_known_price=price)
-            session.add(tracked)
-            session.commit()
-            print(f"✅ Saved to DB: User {telegram_id}, Price {price}")
+            if not product_id:
+                await loading_msg.edit_text("❌ Could not extract a valid product ID from the link. Please check the URL.")
+                return
+            # Check for existing tracked product for this user and product_id
+            tracked = session.query(TrackedProduct).filter_by(user_id=user.id, product_id=product_id).first()
+            if tracked:
+                print(f"ℹ️ Product already tracked for user {telegram_id}: {product_id}")
+            else:
+                tracked = TrackedProduct(
+                    user_id=user.id,
+                    product_id=product_id,
+                    product_url=final_url,
+                    last_known_price=price
+                )
+                session.add(tracked)
+                session.commit()
+                print(f"✅ Saved to DB: User {telegram_id}, Price {price}, Product ID {product_id}")
         except Exception as db_error:
             print(f"❌ Database error: {db_error}")
             session.rollback()
