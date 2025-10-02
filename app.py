@@ -43,7 +43,7 @@ async def playwright_fetch(url):
     async with async_playwright() as p:
         # Launch browser with enhanced anti-detection
         browser = await p.chromium.launch(
-            headless=False,
+            headless=True,
             args=[
                 '--no-sandbox',
                 '--disable-blink-features=AutomationControlled',
@@ -93,6 +93,27 @@ async def scrapper(url: str):
         print(f"❌ Playwright fetch failed: {e}")
         return None, None
 
+async def expand_url(url: str) -> str:
+    """Expand shortened URLs to their final destination."""
+    try:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/119.0.0.0 Safari/537.36"
+            )
+        }
+
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
+            response = await client.get(url, headers=headers)
+            return str(response.url)
+
+    except httpx.RequestError as e:
+        print(f"❌ Request error: {e}")
+    except Exception as e:
+        print(f"❌ General error: {e}")
+    return url
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     loading_msg = await update.message.reply_text("⏳ Loading and extracting price...")
     user_input = update.message.text.strip()
@@ -100,7 +121,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.username
 
     if user_input.startswith("http://") or user_input.startswith("https://"):
-        html, final_url = await scrapper(user_input)
+        # Expand the URL before scraping
+        expanded_url = await expand_url(user_input)
+        print(f"Expanded URL: {expanded_url}")
+        html, final_url = await scrapper(expanded_url)
         print(f"Fetched URL: {final_url}")
         if not html:
             await loading_msg.edit_text("❌ Failed to fetch or parse the webpage.")
