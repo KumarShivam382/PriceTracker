@@ -5,15 +5,16 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from dotenv import load_dotenv
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CallbackQueryHandler
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from models import Base, User, TrackedProduct
+from models import Base, User, Product
 from utils.amazon import extract_amazon_price
 from utils.flipkart import extract_flipkart_price
 from playwright.async_api import async_playwright
 import re
+from notifier import send_price_card, send_price_notification_card
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -179,18 +180,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not product_id:
                 await loading_msg.edit_text("❌ Could not extract a valid product ID from the link. Please check the URL.")
                 return
-            # Check for existing tracked product for this user and product_id
-            tracked = session.query(TrackedProduct).filter_by(user_id=user.id, product_id=product_id).first()
-            if tracked:
-                print(f"ℹ️ Product already tracked for user {telegram_id}: {product_id}")
-            else:
-                tracked = TrackedProduct(
-                    user_id=user.id,
+            # Check if product exists, else create
+            product = session.query(Product).filter_by(product_id=product_id).first()
+            if not product:
+                product = Product(
                     product_id=product_id,
                     product_url=final_url,
                     last_known_price=price
                 )
-                session.add(tracked)
+                session.add(product)
+                session.commit()
+            # Check if user is already tracking this product
+            if product in user.tracked_products:
+                print(f"ℹ️ Product already tracked for user {telegram_id}: {product_id}")
+            else:
+                user.tracked_products.append(product)
                 session.commit()
                 print(f"✅ Saved to DB: User {telegram_id}, Price {price}, Product ID {product_id}")
         except Exception as db_error:
@@ -201,15 +205,56 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # --- End DB logic ---
 
         if price is not None:
-            await loading_msg.edit_text(f"🔍 Current Price: {price}")
+            # Send card with Buy Now and Stop Tracking buttons
+            await send_price_card(
+                bot=context.bot,
+                chat_id=update.effective_chat.id,
+                product_url=final_url,
+                price=price,
+                product_id=product_id,
+                product_name=None  # You can extract product name if needed
+            )
+            await loading_msg.delete()
         else:
             await loading_msg.edit_text("❌ Couldn't find price in the page.")
     else:
         await update.message.reply_text("❌ Please provide a valid product link.")
 
+async def stop_tracking_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    data = query.data
+    if data.startswith("stop_"):
+        product_id = data.replace("stop_", "")
+        session = Session()
+
+        print(f"{product_id} is product_id")
+        print(f"{user_id} is user_id ")
+        try:
+            user = session.query(User).filter_by(telegram_id=user_id).first()
+            product = session.query(Product).filter_by(product_id=product_id).first()
+            if user and product and product in user.tracked_products:
+                user.tracked_products.remove(product)
+                session.commit()
+                # Clean up: If no users are tracking this product, delete the product
+                if not product.users:
+                    session.delete(product)
+                    session.commit()
+                await query.edit_message_text("🛑 Tracking stopped for this product.")
+                print("Tracking stopped for this product.")
+            else:
+                await query.edit_message_text("Product was not being tracked or already removed.")
+        except Exception as e:
+            print(f"❌ Error stopping tracking: {e}")
+            await query.edit_message_text("❌ Failed to stop tracking due to an error.")
+            session.rollback()
+        finally:
+            session.close()
+
 if __name__ == "__main__":
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
+    app.add_handler(CallbackQueryHandler(stop_tracking_callback, pattern=r"^stop_"))
     print("🤖 Price Tracker Telegram bot is running!")
     app.run_polling()

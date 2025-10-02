@@ -1,8 +1,15 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, UniqueConstraint
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy import Column, Integer, String, DateTime, UniqueConstraint, Table, ForeignKey
+from sqlalchemy.orm import declarative_base, object_session, relationship
 from datetime import datetime
 
 Base = declarative_base()
+
+# Association table for many-to-many relationship
+user_tracked_products = Table(
+    'user_tracked_products', Base.metadata,
+    Column('user_id', Integer, ForeignKey('users.id'), primary_key=True),
+    Column('product_id', Integer, ForeignKey('products.id'), primary_key=True)
+)
 
 class User(Base):
     __tablename__ = 'users'
@@ -10,16 +17,22 @@ class User(Base):
     telegram_id = Column(Integer, unique=True, nullable=False)
     username = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
-    products = relationship("TrackedProduct", back_populates="user")
+    tracked_products = relationship(
+        'Product',
+        secondary=user_tracked_products,
+        back_populates='users'
+    )
 
-class TrackedProduct(Base):
-    __tablename__ = 'tracked_products'
+class Product(Base):
+    __tablename__ = 'products'
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    product_id = Column(String, nullable=False)  # ASIN or Flipkart product ID
-    product_url = Column(String, nullable=False) # Original/cleaned URL
+    product_id = Column(String, unique=True, nullable=False)  # ASIN or Flipkart product ID
+    product_url = Column(String, nullable=False)
     last_known_price = Column(String)
     last_checked = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
-    user = relationship("User", back_populates="products")
-    __table_args__ = (UniqueConstraint('user_id', 'product_id', name='_user_product_uc'),)
+    users = relationship(
+        'User',
+        secondary=user_tracked_products,
+        back_populates='tracked_products'
+    )
