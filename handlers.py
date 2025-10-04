@@ -78,6 +78,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Check if user is already tracking this product
             if product in user.tracked_products:
                 print(f"ℹ️ Product already tracked for user {telegram_id}: {product_id}")
+                await loading_msg.edit_text("ℹ️ This product is already being tracked.")
+                await send_price_card(
+                    bot=context.bot,
+                    chat_id=update.effective_chat.id,
+                    product_url=final_url,
+                    price=price,
+                    product_id=product_id,
+                    product_name=product_name
+                )
+                return
             else:
                 user.tracked_products.append(product)
                 session.commit()
