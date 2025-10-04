@@ -64,5 +64,7 @@ price-tracker
 Feel free to submit issues or pull requests if you have suggestions or improvements for the project.
 
 Issues faced/facing :
-mimicking a real browser : currently using selenium(playwright) to automate browser opening to bypass ip blocking and rate limiter , will try to solve in next pr .
+mimicking a real browser : currently using selenium(playwright) to automate browser opening to bypass ip blocking and rate limiter
+might move to cloudflare and proxies making playqright as secondary
 Currently working with flipkart and amazon urls only
+correct cards , deploy , make a web page

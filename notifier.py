@@ -1,6 +1,8 @@
 import os
 import httpx
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+import re
+import urllib.parse
 
 async def send_price_card(bot, chat_id, product_url, price, product_id, product_name=None):
     from datetime import datetime
@@ -11,8 +13,15 @@ async def send_price_card(bot, chat_id, product_url, price, product_id, product_
     text += f"<a href='{product_url}'>Click here to open in Amazon!</a>\n\n"
     text += f"⏱ Updated at [ {now_str} ]"
 
+    # Price history URL using the product_url as a search query
+    encoded_url = urllib.parse.quote(product_url, safe='')
+    price_history_url = f"https://mypricehistory.com/product?search={encoded_url}"
+
     keyboard = [
-        [InlineKeyboardButton("✅ Buy Now", url=product_url)],
+        [
+            InlineKeyboardButton("✅ Buy Now", url=product_url),
+            InlineKeyboardButton("📈 Price History", url=price_history_url)
+        ],
         [InlineKeyboardButton("🛑 Stop Tracking", callback_data=f"stop_{product_id}")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)

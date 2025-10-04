@@ -31,6 +31,7 @@ class Product(Base):
     last_known_price = Column(String)
     last_checked = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
+    product_name = Column(String)  
     users = relationship(
         'User',
         secondary=user_tracked_products,
