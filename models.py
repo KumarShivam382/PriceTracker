@@ -4,11 +4,11 @@ from datetime import datetime
 
 Base = declarative_base()
 
-# Association table for many-to-many relationship
+# Association table for many-to-many relationship with CASCADE delete
 user_tracked_products = Table(
     'user_tracked_products', Base.metadata,
-    Column('user_id', Integer, ForeignKey('users.id'), primary_key=True),
-    Column('product_id', Integer, ForeignKey('products.id'), primary_key=True)
+    Column('user_id', Integer, ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
+    Column('product_id', Integer, ForeignKey('products.id', ondelete='CASCADE'), primary_key=True)
 )
 
 class User(Base):

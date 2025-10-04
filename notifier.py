@@ -61,12 +61,18 @@ async def send_price_notification_card(bot, chat_id, product_url, price, product
         text += f"Current Price: <b>₹{new_price_val:,.0f}</b>\n\n"
     else:
         text += f"Current Price: <b>{price}</b>\n\n"
-    text += f"<a href='{product_url}'>Click here to open in Flipkart!</a>"
+    if product_url and (product_url.startswith('http://') or product_url.startswith('https://')):
+        if "amazon" in product_url:
+            text += f"<a href='{product_url}'>Click here to open in Amazon!</a>"
+        elif "flipkart" in product_url:
+            text += f"<a href='{product_url}'>Click here to open in Flipkart!</a>"
+        else:
+            text += f"<a href='{product_url}'>Click here to view product!</a>"
 
-    keyboard = [
-        [InlineKeyboardButton("✅ Buy Now", url=product_url)],
-        [InlineKeyboardButton("🛑 Stop Tracking", callback_data=f"stop_{product_id}")]
-    ]
+    keyboard = []
+    if product_url and (product_url.startswith('http://') or product_url.startswith('https://')):
+        keyboard.append([InlineKeyboardButton("✅ Buy Now", url=product_url)])
+    keyboard.append([InlineKeyboardButton("🛑 Stop Tracking", callback_data=f"stop_{product_id}")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await bot.send_message(

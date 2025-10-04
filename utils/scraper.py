@@ -3,6 +3,8 @@ import os
 import httpx
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright   
+import random
+import string
 
 async def playwright_fetch(url):
     async with async_playwright() as p:
