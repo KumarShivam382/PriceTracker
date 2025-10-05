@@ -249,6 +249,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if product in user.tracked_products:
                     logger.info(f"Product already tracked for user {telegram_id}: {product_id}")
                     await loading_msg.edit_text("ℹ️ This product is already being tracked.")
+                    import asyncio
+                    await asyncio.sleep(10)
+                    await loading_msg.delete()
                     await send_price_card(
                         bot=context.bot,
                         chat_id=update.effective_chat.id,

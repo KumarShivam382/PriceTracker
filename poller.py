@@ -57,10 +57,8 @@ async def check_and_update_price(product, old_price):
                 db_product.last_known_price = new_price
                 db_product.last_checked = datetime.utcnow()
                 session.commit()
-                
                 print(f"  📢 Price changed! Old: {old_price} → New: {new_price}")
                 
-                # Create bot instance for notifications
                 if BOT_TOKEN:
                     bot = Bot(token=BOT_TOKEN)
                     print(f"  👥 Notifying {len(db_product.users)} users")
