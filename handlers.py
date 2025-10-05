@@ -9,6 +9,25 @@ from utils.amazon import extract_amazon_price_and_name, extract_amazon_asin
 from utils.flipkart import extract_flipkart_price_and_name, extract_flipkart_pid
 from utils.scraper import scrapper, expand_url
 from db import Session  
+import aioredis
+import time
+
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+RATE_LIMIT = 10  # requests
+RATE_LIMIT_WINDOW = 60  # seconds
+
+async def is_rate_limited(user_id):
+    redis = await aioredis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
+    key = f"rate_limit:{user_id}"
+    now = int(time.time())
+    await redis.zremrangebyscore(key, 0, now - RATE_LIMIT_WINDOW)
+    count = await redis.zcard(key)
+    limited = count >= RATE_LIMIT
+    if not limited:
+        await redis.zadd(key, {str(now): now})
+        await redis.expire(key, RATE_LIMIT_WINDOW)
+    await redis.close()
+    return limited, count
 
 def save_html_for_debug(url: str, html: str):
     """Save HTML to debug file in logs folder"""
@@ -27,6 +46,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     username = update.effective_user.username
 
+    # --- Redis Rate limiting logic ---
+    limited, user_rate = await is_rate_limited(telegram_id)
+    print(f"User {telegram_id} has made {user_rate} requests in the last {RATE_LIMIT_WINDOW} seconds.")
+    if limited:
+        await loading_msg.edit_text(f"🚫 Rate limit exceeded. You made {user_rate} requests in the last minute. Please wait before trying again.")
+        return
+    # --- End rate limiting ---
+    
     if user_input.startswith("http://") or user_input.startswith("https://"):
         # Expand the URL before scraping
         expanded_url = await expand_url(user_input)
@@ -77,7 +104,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 session.commit()
             # Check if user is already tracking this product
             if product in user.tracked_products:
-                print(f"ℹ️ Product already tracked for user {telegram_id}: {product_id}")
+                print(f"ℹ Product already tracked for user {telegram_id}: {product_id}")
                 await loading_msg.edit_text("ℹ️ This product is already being tracked.")
                 await send_price_card(
                     bot=context.bot,
@@ -111,9 +138,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await loading_msg.delete()
         else:
-            await loading_msg.edit_text("❌ Couldn't find price in the page.")
+            await loading_msg.edit_text(" Couldn't find price in the page.")
     else:
-        await update.message.reply_text("❌ Please provide a valid product link.")
+        await update.message.reply_text(" Please provide a valid product link.")
 
 async def stop_tracking_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -142,7 +169,7 @@ async def stop_tracking_callback(update: Update, context: ContextTypes.DEFAULT_T
                 await query.edit_message_text("Product was not being tracked or already removed.")
         except Exception as e:
             print(f"❌ Error stopping tracking: {e}")
-            await query.edit_message_text("❌ Failed to stop tracking due to an error.")
+            await query.edit_message_text(" Failed to stop tracking due to an error.")
             session.rollback()
         finally:
             session.close()
