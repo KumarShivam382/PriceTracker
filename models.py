@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, UniqueConstraint, Table, ForeignKey
+from sqlalchemy import Column, Integer, BigInteger, String, DateTime, UniqueConstraint, Table, ForeignKey
 from sqlalchemy.orm import declarative_base, object_session, relationship
 from datetime import datetime
 
@@ -14,7 +14,7 @@ user_tracked_products = Table(
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True, nullable=False)
+    telegram_id = Column(BigInteger, unique=True, nullable=False)
     username = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
     tracked_products = relationship(
