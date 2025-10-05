@@ -1,34 +1,39 @@
-# Price Tracker
+# Price Tracker Telegram Bot
 
-This project is a Telegram bot that allows users to track product prices from Amazon and Flipkart. Users can provide links to products, and the bot will scrape the current prices, notify users of any changes, and poll the product pages every hour.
+This project is a Telegram bot that allows users to track product prices from Amazon and Flipkart. Users can provide links to products, and the bot will scrape the current prices, notify users of any changes, and poll the product pages every 10 minutes.
+
+## Features
+
+- Track prices for Amazon and Flipkart products
+- Get notified on price drops
+- Manage tracked products easily
+- Rate limiting to prevent spam
+- Cron-based polling for price updates
 
 ## Project Structure
 
 ```
-price-tracker
+PriceTracker/
 ├── app.py            # Main entry point of the application
 ├── notifier.py       # Sends notifications to users on price changes
-├── poller.py         # Polls product pages every hour for price changes
-├── requirements.txt   # Lists project dependencies
+├── poller.py         # Polls product pages for price changes
+├── requirements.txt  # Lists project dependencies
 ├── .env              # Contains environment variables (API keys, tokens)
 ├── README.md         # Documentation for the project
-└── utils
-    ├── amazon.py     # Utility functions for scraping Amazon
-    ├── flipkart.py    # Utility functions for scraping Flipkart
-    └── __init__.py   # Marks the utils directory as a Python package
+├── utils/            # Scraper and helper modules
+└── logs/             # Debug HTML logs
 ```
 
-## Setup Instructions
+## Getting Started
 
 1. **Clone the repository:**
 
    ```
    git clone <repository-url>
-   cd price-tracker
+   cd PriceTracker
    ```
 
 2. **Install dependencies:**
-   Make sure you have Python installed. Then, run:
 
    ```
    pip install -r requirements.txt
@@ -38,33 +43,55 @@ price-tracker
    Create a `.env` file in the root directory and add your API keys and tokens:
 
    ```
-   BOT_TOKEN=<your-telegram-bot-token>
-   GEMINI_API_KEY=<your-gemini-api-key>
+   BOT_TOKEN=your_telegram_bot_token
+   DATABASE_URL=your_database_url
+   REDIS_URL=your_redis_url
    ```
 
 4. **Run the application:**
-   Start the bot by running:
+
    ```
    python app.py
    ```
 
+5. **Set up polling (optional):**
+   To poll every 10 minutes, add this to your crontab (`crontab -e`):
+
+   ```
+   */10 * * * * cd /home/ec2-user/PriceTracker && ~/PriceTracker/venv/bin/python poller.py >> poller.log 2>&1
+   ```
+
+## Bot Commands
+
+- `/start` — Show welcome/help message
+- `/help` — Show usage instructions
+- `/list` — List your tracked products
+- Send a product link to start tracking
+- Use the "Stop Tracking" button to remove a product
+
 ## Technical Notes
 
-- **Connection Pooling:** The bot uses SQLAlchemy's connection pooling to manage database connections efficiently. Instead of opening a new connection for every request, a pool of connections is maintained and reused, which improves performance and reliability, especially when handling multiple users or frequent database access.
-- **Anti-bot Measures:** The scraper uses Playwright with anti-detection techniques to mimic real browser behavior and avoid being blocked by Amazon and Flipkart.
+- **Connection Pooling:** Uses SQLAlchemy's connection pooling for efficient DB access.
+- **Anti-bot Measures:** Uses Playwright with anti-detection techniques to mimic real browser behavior.
+- **Rate Limiting:** Per-user rate limiting using Redis.
+- **Polling:** `poller.py` can be run via cron for regular price checks.
 
-## Usage
+## Security
 
-- Send a message to the bot with a product link from Amazon or Flipkart.
-- The bot will scrape the product information and notify you of the current price.
-- If the price changes, you will receive a notification.
+- Never commit your `.env` file
+- Keep your bot token and DB credentials secret
+- Validate user input to prevent abuse
+
+## Troubleshooting
+
+- If Playwright fails, ensure all system dependencies are installed and run `python -m playwright install`.
+- If you see rate limit errors, wait a minute before retrying.
+- Check `poller.log` for polling errors.
 
 ## Contributing
 
-Feel free to submit issues or pull requests if you have suggestions or improvements for the project.
+Pull requests and issues are welcome!
 
-Issues faced/facing :
-mimicking a real browser : currently using selenium(playwright) to automate browser opening to bypass ip blocking and rate limiter
-might move to cloudflare and proxies making playqright as secondary
-Currently working with flipkart and amazon urls only
-correct cards , deploy , make a web page
+## License
+
+MIT

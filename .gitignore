@@ -1,7 +1,9 @@
 .env
 .vscode
-venv
-logs
-utils/__pycache__
-__pycache__
+venv/
+logs/
 poller.log
+bot.log
+utils/__pycache__
+__pycache__/
+*.pyc
