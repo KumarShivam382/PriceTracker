@@ -68,15 +68,38 @@ async def expand_url(url: str) -> str:
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/119.0.0.0 Safari/537.36"
-            )
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate",
+            "Connection": "keep-alive",
         }
 
-        async with httpx.AsyncClient(follow_redirects=True, timeout=8) as client:
-            response = await client.get(url, headers=headers)
-            return str(response.url)
+        async with httpx.AsyncClient(
+            follow_redirects=True, 
+            timeout=10,
+            headers=headers
+        ) as client:
+            # Use HEAD request first to avoid downloading full page content
+            try:
+                response = await client.head(url)
+                expanded_url = str(response.url)
+                print(f"HEAD request expanded: {url} -> {expanded_url}")
+                return expanded_url
+            except Exception as head_error:
+                print(f"HEAD request failed, trying GET: {head_error}")
+                # Fallback to GET request if HEAD fails
+                response = await client.get(url)
+                expanded_url = str(response.url)
+                print(f"GET request expanded: {url} -> {expanded_url}")
+                return expanded_url
 
+    except httpx.TimeoutException as e:
+        print(f"❌ Timeout expanding URL {url}: {e}")
     except httpx.RequestError as e:
-        print(f"❌ Request error: {e}")
+        print(f"❌ Request error expanding URL {url}: {e}")
     except Exception as e:
-        print(f"❌ General error: {e}")
+        print(f"❌ General error expanding URL {url}: {e}")
+    
+    print(f"⚠️ URL expansion failed, returning original: {url}")
     return url
