@@ -67,7 +67,7 @@ if __name__ == "__main__":
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         app.add_handler(CallbackQueryHandler(stop_tracking_callback, pattern=r"^stop_"))
         
-        logger.info("🤖 Price Tracker Telegram bot is starting...")
+        # logger.info("🤖 Price Tracker Telegram bot is starting...")
         app.run_polling()
         
     except Exception as e:

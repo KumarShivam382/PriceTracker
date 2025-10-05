@@ -112,7 +112,7 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(products_text, parse_mode='Markdown', disable_web_page_preview=True)
         
     except Exception as e:
-        # logger.error(f"❌ Error in list command: {e}")
+        logger.error(f"❌ Error in list command: {e}")
         await update.message.reply_text("❌ Sorry, I couldn't fetch your tracked products. Please try again later.")
     finally:
         session.close()
@@ -168,41 +168,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # --- Redis Rate limiting logic ---
         try:
             limited, user_rate = await is_rate_limited(telegram_id)
-            # logger.info(f"User {telegram_id} has made {user_rate} requests in the last {RATE_LIMIT_WINDOW} seconds.")
+            logger.info(f"User {telegram_id} has made {user_rate} requests in the last {RATE_LIMIT_WINDOW} seconds.")
             if limited:
                 await loading_msg.edit_text(f"🚫 Rate limit exceeded. You made {user_rate} requests in the last minute. Please wait before trying again.")
                 return
         except Exception as e:
-            # logger.error(f"Rate limiting error for user {telegram_id}: {e}")
+            logger.error(f"Rate limiting error for user {telegram_id}: {e}")
             await loading_msg.edit_text("❌ Unable to process request. Please try again later.")
             return
         # --- End rate limiting ---
         
         if user_input.startswith("http://") or user_input.startswith("https://"):
-            # Expand the URL before validating
-            try:
-                expanded_url = await expand_url(user_input)
-            except Exception as e:
-                # logger.error(f"Error expanding URL {user_input}: {e}")
-                await loading_msg.edit_text("❌ Failed to expand the URL. Please try again later.")
-                return
-
-            # Validate expanded URL
-            if not validate_url(expanded_url):
+            # Validate URL
+            if not validate_url(user_input):
                 await loading_msg.edit_text("❌ Invalid or unsupported URL. Please send a valid Amazon or Flipkart product link.")
                 return
 
-            # Expand the URL before scraping (already expanded above)
+            # Expand the URL before scraping
             try:
+                expanded_url = await expand_url(user_input)
+                print(f"Expanded URL: {expanded_url}")
                 html, final_url = await scrapper(expanded_url)
                 print(f"Fetched URL: {final_url}")
                 if not html:
                     await loading_msg.edit_text("❌ Failed to fetch or parse the webpage. The site might be blocking requests.")
                     return
 
-                # save_html_for_debug(final_url, html)
+                save_html_for_debug(final_url, html)
             except Exception as e:
-                # logger.error(f"Error scraping URL {expanded_url}: {e}")
+                logger.error(f"Error expanding/scraping URL {user_input}: {e}")
                 await loading_msg.edit_text("❌ Failed to access the webpage. Please check the URL and try again.")
                 return
 
@@ -224,7 +218,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await loading_msg.edit_text("❌ Unsupported website. Please use Amazon or Flipkart product links.")
                     return
             except Exception as e:
-                # logger.error(f"Error extracting price/product info: {e}")
+                logger.error(f"Error extracting price/product info: {e}")
                 await loading_msg.edit_text("❌ Failed to extract product information. Please try again later.")
                 return
 
@@ -253,7 +247,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 # Check if user is already tracking this product
                 if product in user.tracked_products:
-                    # logger.info(f"Product already tracked for user {telegram_id}: {product_id}")
+                    logger.info(f"Product already tracked for user {telegram_id}: {product_id}")
                     await loading_msg.edit_text("ℹ️ This product is already being tracked.")
                     await send_price_card(
                         bot=context.bot,
@@ -294,7 +288,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("📝 Please send me a valid product link from Amazon or Flipkart to start tracking!")
     
     except Exception as e:
-        # logger.error(f"Unexpected error in handle_message for user {update.effective_user.id}: {e}")
+        logger.error(f"Unexpected error in handle_message for user {update.effective_user.id}: {e}")
         try:
             if 'loading_msg' in locals():
                 await loading_msg.edit_text("❌ An unexpected error occurred. Please try again later.")
@@ -312,7 +306,7 @@ async def stop_tracking_callback(update: Update, context: ContextTypes.DEFAULT_T
         product_id = data.replace("stop_", "")
         session = Session()
 
-        # logger.info(f"Stop tracking request: product_id={product_id}, user_id={user_id}")
+        logger.info(f"Stop tracking request: product_id={product_id}, user_id={user_id}")
         try:
             user = session.query(User).filter_by(telegram_id=user_id).first()
             product = session.query(Product).filter_by(product_id=product_id).first()
@@ -325,12 +319,12 @@ async def stop_tracking_callback(update: Update, context: ContextTypes.DEFAULT_T
                     session.commit()
                     logger.info(f"Cleaned up unused product: {product_id}")
                 await query.edit_message_text("🛑 Tracking stopped for this product.")
-                # logger.info(f"Tracking stopped for product {product_id} by user {user_id}")
+                logger.info(f"Tracking stopped for product {product_id} by user {user_id}")
             else:
                 await query.edit_message_text("❌ Product was not being tracked or already removed.")
-                # logger.warning(f"Stop tracking failed: product {product_id} not tracked by user {user_id}")
+                logger.warning(f"Stop tracking failed: product {product_id} not tracked by user {user_id}")
         except Exception as e:
-            # logger.error(f"Error stopping tracking for user {user_id}, product {product_id}: {e}")
+            logger.error(f"Error stopping tracking for user {user_id}, product {product_id}: {e}")
             await query.edit_message_text("❌ Failed to stop tracking due to an error.")
             session.rollback()
         finally:
@@ -377,7 +371,7 @@ Use /list to see your tracked products or /help for more info!
         await update.message.reply_text(stats_text, parse_mode='Markdown')
         
     except Exception as e:
-        # logger.error(f"❌ Error in stats command: {e}")
+        logger.error(f"❌ Error in stats command: {e}")
         await update.message.reply_text("❌ Sorry, I couldn't fetch statistics. Please try again later.")
     finally:
         session.close()
@@ -421,10 +415,10 @@ Use /help if you need assistance!
 """
         
         await update.message.reply_text(clear_text, parse_mode='Markdown')
-        # logger.info(f"User {telegram_id} cleared {product_count} products, cleaned {cleaned_products} unused products")
+        logger.info(f"User {telegram_id} cleared {product_count} products, cleaned {cleaned_products} unused products")
         
     except Exception as e:
-        # logger.error(f"❌ Error in clear command: {e}")
+        logger.error(f"❌ Error in clear command: {e}")
         session.rollback()
         await update.message.reply_text("❌ Sorry, I couldn't clear your products. Please try again later.")
     finally:
