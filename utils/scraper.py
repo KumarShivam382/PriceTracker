@@ -45,7 +45,7 @@ async def playwright_fetch(url):
             });
         """)
         
-        await page.goto(url, timeout=7000, wait_until='domcontentloaded')
+        await page.goto(url, timeout=10000, wait_until='domcontentloaded')
         await page.wait_for_timeout(500)  # Minimal delay for dynamic content
         html = await page.content()
         await browser.close()
