@@ -76,11 +76,9 @@ async def resolve_amazon_url(url: str) -> str:
                     get: () => undefined,
                 });
             """)
-            
-            # Navigate with faster wait condition - don't wait for networkidle
-            await page.goto(url, timeout=15000, wait_until='domcontentloaded')
-            # Wait a brief moment for any immediate redirects
-            await page.wait_for_timeout(1000)
+
+            await page.goto(url, timeout=10000, wait_until='commit')
+            await page.wait_for_timeout(800)
             final_url = page.url
             
             await browser.close()

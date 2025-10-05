@@ -45,8 +45,8 @@ async def playwright_fetch(url):
             });
         """)
         
-        await page.goto(url, timeout=15000, wait_until='domcontentloaded')
-        await page.wait_for_timeout(1000)  # Brief delay for dynamic content
+        await page.goto(url, timeout=8000, wait_until='commit')
+        await page.wait_for_timeout(800)  # Brief delay for dynamic content
         html = await page.content()
         await browser.close()
         return html
@@ -77,8 +77,8 @@ async def expand_url(url: str) -> str:
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
             )
             page = await context.new_page()
-            await page.goto(url, timeout=10000, wait_until='domcontentloaded')
-            await page.wait_for_timeout(1000)
+            await page.goto(url, timeout=8000, wait_until='commit')
+            await page.wait_for_timeout(800)
             final_url = page.url
             await browser.close()
             return final_url
