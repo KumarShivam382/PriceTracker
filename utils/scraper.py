@@ -61,22 +61,27 @@ async def scrapper(url: str):
         return None, None
 
 async def expand_url(url: str) -> str:
-    """Expand shortened URLs to their final destination."""
+    """Expand shortened URLs to their final destination using Playwright only."""
     try:
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/119.0.0.0 Safari/537.36"
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True, args=[
+                '--no-sandbox',
+                '--disable-blink-features=AutomationControlled',
+                '--disable-web-security',
+                '--disable-dev-shm-usage',
+                '--no-first-run',
+                '--start-minimized'
+            ])
+            context = await browser.new_context(
+                viewport={'width': 1366, 'height': 768},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
             )
-        }
-
-        async with httpx.AsyncClient(follow_redirects=True, timeout=8) as client:
-            response = await client.get(url, headers=headers)
-            return str(response.url)
-
-    except httpx.RequestError as e:
-        print(f"❌ Request error: {e}")
+            page = await context.new_page()
+            await page.goto(url, timeout=10000, wait_until='domcontentloaded')
+            await page.wait_for_timeout(1000)
+            final_url = page.url
+            await browser.close()
+            return final_url
     except Exception as e:
-        print(f"❌ General error: {e}")
+        print(f"❌ Playwright expand_url error: {e}")
     return url
