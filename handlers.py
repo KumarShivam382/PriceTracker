@@ -222,31 +222,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await loading_msg.edit_text("❌ Failed to extract product information. Please try again later.")
                 return
 
-        # --- Store user and product in DB ---
-        try:
-            session = Session()
-            user = session.query(User).filter_by(telegram_id=telegram_id).first()
-            if not user:
-                user = User(telegram_id=telegram_id, username=username)
-                session.add(user)
-                session.commit()
-            if not product_id:
-                await loading_msg.edit_text("❌ Could not extract a valid product ID from the link. Please check the URL.")
-                return
-            # Check if product exists, else create
-            product = session.query(Product).filter_by(product_id=product_id).first()
-            if not product:
-                product = Product(
-                    product_id=product_id,
-                    product_url=final_url,
-                    last_known_price=price,
-                    product_name=product_name
-                )
-                session.add(product)
-                session.commit()
-            
-            # Check if user is already tracking this product
-            if product in user.tracked_products:
+            # --- Store user and product in DB ---
+            try:
+                session = Session()
+                user = session.query(User).filter_by(telegram_id=telegram_id).first()
+                if not user:
+                    user = User(telegram_id=telegram_id, username=username)
+                    session.add(user)
+                    session.commit()
+                if not product_id:
+                    await loading_msg.edit_text("❌ Could not extract a valid product ID from the link. Please check the URL.")
+                    return
+                # Check if product exists, else create
+                product = session.query(Product).filter_by(product_id=product_id).first()
+                if not product:
+                    product = Product(
+                        product_id=product_id,
+                        product_url=final_url,
+                        last_known_price=price,
+                        product_name=product_name
+                    )
+                    session.add(product)
+                    session.commit()
+                
+                # Check if user is already tracking this product
+                if product in user.tracked_products:
                     logger.info(f"Product already tracked for user {telegram_id}: {product_id}")
                     await loading_msg.edit_text("ℹ️ This product is already being tracked.")
                     await send_price_card(
@@ -258,32 +258,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         product_name=product_name
                     )
                     return
-            else:
-                user.tracked_products.append(product)
-                session.commit()
-                logger.info(f"✅ Saved to DB: User {telegram_id}, Price {price}, Product ID {product_id}")
-        except Exception as db_error:
+                else:
+                    user.tracked_products.append(product)
+                    session.commit()
+                    logger.info(f"✅ Saved to DB: User {telegram_id}, Price {price}, Product ID {product_id}")
+            except Exception as db_error:
                 logger.error(f"Database error for user {telegram_id}: {db_error}")
                 session.rollback()
                 await loading_msg.edit_text("❌ Database error. Please try again later.")
                 return
-        finally:
-            session.close()
-        # --- End DB logic ---
+            finally:
+                session.close()
+            # --- End DB logic ---
 
-        if price is not None:
-            # Send card with Buy Now and Stop Tracking buttons
-            await send_price_card(
-                bot=context.bot,
-                chat_id=update.effective_chat.id,
-                product_url=final_url,
-                price=price,
-                product_id=product_id,
-                product_name=product_name
-            )
-            await loading_msg.delete()
-        else:
-            await loading_msg.edit_text("❌ Couldn't find price on this page. The product might be unavailable or the page format changed.")
+            if price is not None:
+                # Send card with Buy Now and Stop Tracking buttons
+                await send_price_card(
+                    bot=context.bot,
+                    chat_id=update.effective_chat.id,
+                    product_url=final_url,
+                    price=price,
+                    product_id=product_id,
+                    product_name=product_name
+                )
+                await loading_msg.delete()
+            else:
+                await loading_msg.edit_text("❌ Couldn't find price on this page. The product might be unavailable or the page format changed.")
         else:
             await update.message.reply_text("📝 Please send me a valid product link from Amazon or Flipkart to start tracking!")
     

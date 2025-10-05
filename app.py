@@ -15,6 +15,10 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+
+# Reduce httpx logging noise
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 load_dotenv()
