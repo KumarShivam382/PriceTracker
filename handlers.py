@@ -13,6 +13,7 @@ from db import Session
 import aioredis
 import time
 import re
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -130,35 +131,36 @@ async def is_rate_limited(user_id):
     await redis.close()
     return limited, count
 
-def save_html_for_debug(url: str, html: str):
-    """Save HTML to debug file in logs folder"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    domain = urlparse(url).netloc.replace("www.", "").replace(".", "_")
-    logs_dir = "logs"
-    os.makedirs(logs_dir, exist_ok=True)
-    filename = os.path.join(logs_dir, f"debug_{domain}_{timestamp}.html")
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write(html)
-    logger.info(f"🐛 HTML saved to: {filename}")
+# def save_html_for_debug(url: str, html: str):
+#     """Save HTML to debug file in logs folder"""
+#     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+#     domain = urlparse(url).netloc.replace("www.", "").replace(".", "_")
+#     logs_dir = "logs"
+#     os.makedirs(logs_dir, exist_ok=True)
+#     filename = os.path.join(logs_dir, f"debug_{domain}_{timestamp}.html")
+#     with open(filename, "w", encoding="utf-8") as f:
+#         f.write(html)
+#     logger.info(f"🐛 HTML saved to: {filename}")
 
 def validate_url(url: str) -> bool:
-    """Validate if URL is from supported domains and properly formatted."""
+    """Validate if the URL is from a supported domain."""
     try:
-        parsed = urlparse(url)
-        if not parsed.scheme or not parsed.netloc:
-            return False
+        parsed = urlparse(url.lower())
+        domain = parsed.netloc.replace("www.", "")
         
-        # Check if domain is supported
-        domain = parsed.netloc.lower().replace("www.", "")
-        supported_domains = ["amazon.in", "amazon.com", "amazon.co.uk", "flipkart.com"]
+        supported_domains = [
+            'amazon.in', 'amazon.com', 'amazon.co.uk', 'amazon.de', 'amazon.fr',
+            'amazon.it', 'amazon.es', 'amazon.ca', 'amazon.com.au', 'amazon.co.jp',
+            'amzn.in', 'amzn.to', 'a.co',  # Amazon short links
+            'flipkart.com', 'dl.flipkart.com'  # Flipkart and short links
+        ]
         
-        return any(supported_domain in domain for supported_domain in supported_domains)
+        return any(domain == supported or domain.endswith('.' + supported) for supported in supported_domains)
     except Exception:
         return False
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        loading_msg = await update.message.reply_text("⏳ Loading and extracting price...")
         user_input = update.message.text.strip()
         telegram_id = update.effective_user.id
         username = update.effective_user.username
@@ -170,31 +172,43 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             limited, user_rate = await is_rate_limited(telegram_id)
             logger.info(f"User {telegram_id} has made {user_rate} requests in the last {RATE_LIMIT_WINDOW} seconds.")
             if limited:
-                await loading_msg.edit_text(f"🚫 Rate limit exceeded. You made {user_rate} requests in the last minute. Please wait before trying again.")
+                await update.message.reply_text(f"🚫 Rate limit exceeded. You made {user_rate} requests in the last minute. Please wait before trying again.")
                 return
         except Exception as e:
             logger.error(f"Rate limiting error for user {telegram_id}: {e}")
-            await loading_msg.edit_text("❌ Unable to process request. Please try again later.")
+            await update.message.reply_text("❌ Unable to process request. Please try again later.")
             return
         # --- End rate limiting ---
         
         if user_input.startswith("http://") or user_input.startswith("https://"):
-            # Validate URL
+            # Validate URL before processing
             if not validate_url(user_input):
-                await loading_msg.edit_text("❌ Invalid or unsupported URL. Please send a valid Amazon or Flipkart product link.")
+                await update.message.reply_text("❌ Invalid or unsupported URL. Please use Amazon or Flipkart product links.")
                 return
+                
+            loading_msg = await update.message.reply_text("🔍 Validating URL...")
+            await asyncio.sleep(0.5)  # Brief pause to show validation step
 
-            # Expand the URL before scraping
+            # Expand the URL before scraping with timeout
             try:
-                expanded_url = await expand_url(user_input)
+                await loading_msg.edit_text("🌐 Resolving short links if present...")
+                # Add total timeout wrapper for the entire scraping process
+                expanded_url = await asyncio.wait_for(expand_url(user_input), timeout=12.0)
                 print(f"Expanded URL: {expanded_url}")
-                html, final_url = await scrapper(expanded_url)
+                
+                await loading_msg.edit_text("📄 Loading product page...")
+                html, final_url = await asyncio.wait_for(scrapper(expanded_url), timeout=15.0)
                 print(f"Fetched URL: {final_url}")
+                
                 if not html:
-                    await loading_msg.edit_text("❌ Failed to fetch or parse the webpage. The site might be blocking requests.")
+                    await loading_msg.edit_text("❌ Failed to load the webpage. The site might be blocking requests or taking too long.")
                     return
 
-                save_html_for_debug(final_url, html)
+                # save_html_for_debug(final_url, html)
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout while processing URL {user_input}")
+                await loading_msg.edit_text("⏰ Request timed out. The website is taking too long to respond. Please try again later.")
+                return
             except Exception as e:
                 logger.error(f"Error expanding/scraping URL {user_input}: {e}")
                 await loading_msg.edit_text("❌ Failed to access the webpage. Please check the URL and try again.")
@@ -208,12 +222,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 if "amazon" in domain:
                     print("Detected Amazon URL")
+                    await asyncio.sleep(0.3)
+                    await loading_msg.edit_text("🛒 Extracting Amazon product details...")
                     price, product_name = await extract_amazon_price_and_name(html)
-                    product_id = extract_amazon_asin(final_url)
+                    product_id = await extract_amazon_asin(final_url)
                 elif "flipkart" in domain:
                     print("Detected Flipkart URL")
+                    await asyncio.sleep(0.3)
+                    await loading_msg.edit_text("🛍️ Extracting Flipkart product details...")
                     price, product_name = await extract_flipkart_price_and_name(html)
-                    product_id = extract_flipkart_pid(final_url)
+                    product_id = await extract_flipkart_pid(final_url)
                 else:
                     await loading_msg.edit_text("❌ Unsupported website. Please use Amazon or Flipkart product links.")
                     return
@@ -224,6 +242,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # --- Store user and product in DB ---
             try:
+                await asyncio.sleep(0.3)
+                await loading_msg.edit_text("💾 Saving to database...")
                 session = Session()
                 user = session.query(User).filter_by(telegram_id=telegram_id).first()
                 if not user:
@@ -272,6 +292,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # --- End DB logic ---
 
             if price is not None:
+                await loading_msg.edit_text("✅ Creating product card...")
                 # Send card with Buy Now and Stop Tracking buttons
                 await send_price_card(
                     bot=context.bot,

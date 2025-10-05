@@ -46,7 +46,7 @@ async def playwright_fetch(url):
         """)
         
         await page.goto(url, timeout=15000, wait_until='domcontentloaded')
-        await page.wait_for_timeout(500)  # Minimal delay for dynamic content
+        await page.wait_for_timeout(1000)  # Brief delay for dynamic content
         html = await page.content()
         await browser.close()
         return html
@@ -71,7 +71,7 @@ async def expand_url(url: str) -> str:
             )
         }
 
-        async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=8) as client:
             response = await client.get(url, headers=headers)
             return str(response.url)
 

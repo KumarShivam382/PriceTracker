@@ -2,6 +2,7 @@ from bs4 import BeautifulSoup
 import re
 import httpx
 from urllib.parse import urlparse, parse_qs
+from playwright.async_api import async_playwright
 
 
 # Extract product name and price from Flipkart product page HTML
@@ -33,32 +34,79 @@ def extract_pid_from_url_path(url: str) -> str:
         return query_params['pid'][0]
 
     # From path, e.g., /p/itmABC123XYZ456
-    path_match = re.search(r'/p/(itm[0-9A-Z]+)', parsed.path)
+    path_match = re.search(r'/p/(itm[0-9A-Za-z]+)', parsed.path)
     if path_match:
         return path_match.group(1)
+    
+    # Alternative pattern: /product-name/p/itmXXX?pid=itmXXX
+    alt_match = re.search(r'/p/(itm[^/?]+)', parsed.path)
+    if alt_match:
+        return alt_match.group(1)
+    
+    # Extract from URL segments that contain 'itm'
+    segments = parsed.path.split('/')
+    for segment in segments:
+        if segment.startswith('itm') and len(segment) > 10:
+            return segment
 
+    print(f"Could not extract PID from URL: {url}")
     return None
 
 
-# Resolve short Flipkart URLs like https://dl.flipkart.com/s/abcd123
-async def resolve_short_flipkart_url(url: str) -> str:
+# Resolve Flipkart URLs using Playwright (primary) with httpx fallback
+async def resolve_flipkart_url(url: str) -> str:
+    """Use Playwright to resolve any Flipkart URL, including short links."""
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=10) as client:
-            response = await client.head(url)
-            return str(response.url)
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    '--no-sandbox',
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-web-security',
+                    '--disable-dev-shm-usage',
+                    '--no-first-run'
+                ]
+            )
+            context = await browser.new_context(
+                viewport={'width': 1366, 'height': 768},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+            )
+            page = await context.new_page()
+            
+            # Hide automation indicators
+            await page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined,
+                });
+            """)
+            
+            # Navigate with faster wait condition - don't wait for networkidle
+            await page.goto(url, timeout=15000, wait_until='domcontentloaded')
+            # Wait a brief moment for any immediate redirects
+            await page.wait_for_timeout(1000)
+            final_url = page.url
+            
+            await browser.close()
+            return final_url
+            
     except Exception as e:
-        print(f"Error resolving short URL: {e}")
-        return None
+        print(f"Playwright failed to resolve Flipkart URL: {e}")
+        # Fallback to httpx only if Playwright fails
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=10) as client:
+                response = await client.head(url)
+                return str(response.url)
+        except Exception as fallback_e:
+            print(f"httpx fallback also failed: {fallback_e}")
+            return url  # Return original URL if all methods fail
 
 
-# Unified PID extraction method
+# Unified PID extraction method - always use Playwright for reliability
 async def extract_flipkart_pid(url: str) -> str:
-    parsed_url = urlparse(url)
-
-    if "dl.flipkart.com" in parsed_url.netloc:
-        resolved_url = await resolve_short_flipkart_url(url)
-        if resolved_url:
-            return extract_pid_from_url_path(resolved_url)
-        return None
-    else:
-        return extract_pid_from_url_path(url)
+    """Extract Flipkart product ID using Playwright for all URLs."""
+    # Always resolve URL with Playwright for consistency and reliability
+    resolved_url = await resolve_flipkart_url(url)
+    if resolved_url:
+        return extract_pid_from_url_path(resolved_url)
+    return None
