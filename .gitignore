@@ -4,3 +4,4 @@ venv
 logs
 utils/__pycache__
 __pycache__
+poller.log
