@@ -179,15 +179,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # --- End rate limiting ---
         
         if user_input.startswith("http://") or user_input.startswith("https://"):
-            # Validate URL
-            if not validate_url(user_input):
+            # Expand the URL before validating
+            try:
+                expanded_url = await expand_url(user_input)
+            except Exception as e:
+                logger.error(f"Error expanding URL {user_input}: {e}")
+                await loading_msg.edit_text("❌ Failed to expand the URL. Please try again later.")
+                return
+
+            # Validate expanded URL
+            if not validate_url(expanded_url):
                 await loading_msg.edit_text("❌ Invalid or unsupported URL. Please send a valid Amazon or Flipkart product link.")
                 return
 
-            # Expand the URL before scraping
+            # Expand the URL before scraping (already expanded above)
             try:
-                expanded_url = await expand_url(user_input)
-                print(f"Expanded URL: {expanded_url}")
                 html, final_url = await scrapper(expanded_url)
                 print(f"Fetched URL: {final_url}")
                 if not html:
@@ -196,7 +202,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 save_html_for_debug(final_url, html)
             except Exception as e:
-                logger.error(f"Error expanding/scraping URL {user_input}: {e}")
+                logger.error(f"Error scraping URL {expanded_url}: {e}")
                 await loading_msg.edit_text("❌ Failed to access the webpage. Please check the URL and try again.")
                 return
 
