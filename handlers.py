@@ -187,9 +187,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Expand the URL before scraping
             try:
                 expanded_url = await expand_url(user_input)
-                logger.info(f"Expanded URL: {expanded_url}")
+                print(f"Expanded URL: {expanded_url}")
                 html, final_url = await scrapper(expanded_url)
-                logger.info(f"Fetched URL: {final_url}")
+                print(f"Fetched URL: {final_url}")
                 if not html:
                     await loading_msg.edit_text("❌ Failed to fetch or parse the webpage. The site might be blocking requests.")
                     return
@@ -207,11 +207,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             try:
                 if "amazon" in domain:
-                    logger.info("Detected Amazon URL")
+                    print("Detected Amazon URL")
                     price, product_name = await extract_amazon_price_and_name(html)
                     product_id = extract_amazon_asin(final_url)
                 elif "flipkart" in domain:
-                    logger.info("Detected Flipkart URL")
+                    print("Detected Flipkart URL")
                     price, product_name = await extract_flipkart_price_and_name(html)
                     product_id = extract_flipkart_pid(final_url)
                 else:
