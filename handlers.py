@@ -64,7 +64,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await loading_msg.edit_text("❌ Failed to fetch or parse the webpage.")
             return
 
-        save_html_for_debug(final_url, html)
+        # save_html_for_debug(final_url, html)
 
         domain = urlparse(final_url).netloc.replace("www.", "")
         price = None
