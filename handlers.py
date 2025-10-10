@@ -142,22 +142,6 @@ async def is_rate_limited(user_id):
 #         f.write(html)
 #     logger.info(f"🐛 HTML saved to: {filename}")
 
-def validate_url(url: str) -> bool:
-    """Validate if the URL is from a supported domain."""
-    try:
-        parsed = urlparse(url.lower())
-        domain = parsed.netloc.replace("www.", "")
-        
-        supported_domains = [
-            'amazon.in', 'amazon.com', 'amazon.co.uk', 'amazon.de', 'amazon.fr',
-            'amazon.it', 'amazon.es', 'amazon.ca', 'amazon.com.au', 'amazon.co.jp',
-            'amzn.in', 'amzn.to', 'a.co',  # Amazon short links
-            'flipkart.com', 'dl.flipkart.com'  # Flipkart and short links
-        ]
-        
-        return any(domain == supported or domain.endswith('.' + supported) for supported in supported_domains)
-    except Exception:
-        return False
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -181,10 +165,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # --- End rate limiting ---
         
         if user_input.startswith("http://") or user_input.startswith("https://"):
-            # Validate URL before processing
-            if not validate_url(user_input):
-                await update.message.reply_text("❌ Invalid or unsupported URL. Please use Amazon or Flipkart product links.")
-                return
                 
             loading_msg = await update.message.reply_text("🔍 Validating URL...")
             await asyncio.sleep(0.5)  # Brief pause to show validation step
