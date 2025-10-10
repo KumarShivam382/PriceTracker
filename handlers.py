@@ -174,12 +174,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await loading_msg.edit_text("🌐 Resolving short links if present...")
                 # Add total timeout wrapper for the entire scraping process
                 expanded_url = await asyncio.wait_for(expand_url(user_input), timeout=12.0)
-                print(f"Expanded URL: {expanded_url}")
-                
+                logger.info(f"Expanded URL: {expanded_url}")
+
                 await loading_msg.edit_text("📄 Loading product page...")
                 html, final_url = await asyncio.wait_for(scrapper(expanded_url), timeout=15.0)
-                print(f"Fetched URL: {final_url}")
-                
+                logger.info(f"Fetched URL: {final_url}")
+
                 if not html:
                     await loading_msg.edit_text("❌ Failed to load the webpage. The site might be blocking requests or taking too long.")
                     return
@@ -195,24 +195,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
             domain = urlparse(final_url).netloc.replace("www.", "")
+            logger.info(f"Domain detected from expanded URL: {domain}")
+            
+            # Robust domain detection for Amazon and Flipkart
+            amazon_domains = [
+                "amazon.in", "amazon.com", "amazon.co.uk", "amazon.de", "amazon.fr", 
+                "amazon.it", "amazon.es", "amazon.ca", "amazon.com.au", "amazon.co.jp",
+                "amzn.in", "amzn.to", "a.co"
+            ]
+            flipkart_domains = [
+                "flipkart.com", "fkrt.it"
+            ]
+            
+            is_amazon = any(d in domain for d in amazon_domains)
+            is_flipkart = any(d in domain for d in flipkart_domains)
+            
             price = None
             product_id = None
             product_name = None
 
             try:
-                if "amazon" in domain:
-                    print("Detected Amazon URL")
+                if is_amazon:
+                    logger.info("Detected Amazon URL")
                     await asyncio.sleep(0.3)
                     await loading_msg.edit_text("🛒 Extracting Amazon product details...")
                     price, product_name = await extract_amazon_price_and_name(html)
                     product_id = await extract_amazon_asin(final_url)
-                elif "flipkart" in domain:
-                    print("Detected Flipkart URL")
+                elif is_flipkart:
+                    logger.info("Detected Flipkart URL")
                     await asyncio.sleep(0.3)
                     await loading_msg.edit_text("🛍️ Extracting Flipkart product details...")
                     price, product_name = await extract_flipkart_price_and_name(html)
                     product_id = await extract_flipkart_pid(final_url)
                 else:
+                    logger.error(f"Unsupported domain: {domain}")
                     await loading_msg.edit_text("❌ Unsupported website. Please use Amazon or Flipkart product links.")
                     return
             except Exception as e:
