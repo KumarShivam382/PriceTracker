@@ -167,15 +167,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_input.startswith("http://") or user_input.startswith("https://"):
                 
             loading_msg = await update.message.reply_text("🔍 Validating URL...")
-            await asyncio.sleep(0.5)  # Brief pause to show validation step
 
             # Expand the URL before scraping with timeout
             try:
                 await loading_msg.edit_text("🌐 Resolving short links if present...")
-                # Extract the first URL from the user message (handles trailing text)
-                url_match = re.search(r"https?://[^\s]+", user_input)
-                if url_match:
-                    url_to_expand = url_match.group(0)
+                # Extract the first URL from the user message (commonly used)
+                # Extract URL starting at first http(s) and cut at first space
+                http_idx = user_input.find("http")
+                if http_idx != -1:
+                    space_idx = user_input.find(" ", http_idx)
+                    if space_idx == -1:
+                        url_to_expand = user_input[http_idx:]
+                    else:
+                        url_to_expand = user_input[http_idx:space_idx]
+
+                    # Strip surrounding whitespace and common punctuation
+                    url_to_expand = url_to_expand.strip().rstrip('.,;:!?)\"\'')
+                    url_to_expand = url_to_expand.lstrip('(<"\'')
                     logger.info(f"Extracted URL to expand from message: {url_to_expand}")
                 else:
                     await loading_msg.edit_text("❌ No valid URL found in the message. Please send a proper product link.")
@@ -211,13 +219,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 if "amazon" in domain:
                     print("Detected Amazon URL")
-                    await asyncio.sleep(0.3)
                     await loading_msg.edit_text("🛒 Extracting Amazon product details...")
                     price, product_name = await extract_amazon_price_and_name(html)
                     product_id = await extract_amazon_asin(final_url)
                 elif "flipkart" in domain:
                     print("Detected Flipkart URL")
-                    await asyncio.sleep(0.3)
                     await loading_msg.edit_text("🛍️ Extracting Flipkart product details...")
                     price, product_name = await extract_flipkart_price_and_name(html)
                     product_id = await extract_flipkart_pid(final_url)
@@ -231,7 +237,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # --- Store user and product in DB ---
             try:
-                await asyncio.sleep(0.3)
                 await loading_msg.edit_text("💾 Saving to database...")
                 session = Session()
                 user = session.query(User).filter_by(telegram_id=telegram_id).first()
