@@ -3,6 +3,10 @@ import re
 import httpx
 from urllib.parse import urlparse
 from playwright.async_api import async_playwright
+import asyncio
+
+# Limit to 5 concurrent Playwright browsers (adjust as needed)
+playwright_semaphore = asyncio.Semaphore(10)
 
 # --- Extract Amazon product price and name from HTML ---
 async def extract_amazon_price_and_name(html: str):
@@ -49,40 +53,54 @@ def extract_asin_from_url_path(url: str) -> str:
     return None
 
 
+def extract_first_amazon_url(text: str) -> str:
+    """
+    Extract the first valid Amazon URL (including short links) from a string.
+    """
+    url_pattern = r"https?://(?:www\.|amzn\.|a\.co|amazon\.)[\w\./\-\?=]+"
+    match = re.search(url_pattern, text)
+    if match:
+        return match.group(0)
+    return None
+
+
+
+
 # Resolve Amazon URLs using Playwright (primary) with httpx fallback
 async def resolve_amazon_url(url: str) -> str:
     """Use Playwright to resolve any Amazon URL, including short links."""
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(
-                headless=True,
-                args=[
-                    '--no-sandbox',
-                    '--disable-blink-features=AutomationControlled',
-                    '--disable-web-security',
-                    '--disable-dev-shm-usage',
-                    '--no-first-run'
-                ]
-            )
-            context = await browser.new_context(
-                viewport={'width': 1366, 'height': 768},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
-            )
-            page = await context.new_page()
-            
-            # Hide automation indicators
-            await page.add_init_script("""
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined,
-                });
-            """)
+        async with playwright_semaphore:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=[
+                        '--no-sandbox',
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-web-security',
+                        '--disable-dev-shm-usage',
+                        '--no-first-run'
+                    ]
+                )
+                context = await browser.new_context(
+                    viewport={'width': 1366, 'height': 768},
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+                )
+                page = await context.new_page()
+                
+                # Hide automation indicators
+                await page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined,
+                    });
+                """)
 
-            await page.goto(url, timeout=10000, wait_until='commit')
-            await page.wait_for_timeout(800)
-            final_url = page.url
-            
-            await browser.close()
-            return final_url
+                await page.goto(url, timeout=10000, wait_until='commit')
+                await page.wait_for_timeout(800)
+                final_url = page.url
+                
+                await browser.close()
+                return final_url
             
     except Exception as e:
         print(f"Playwright failed to resolve Amazon URL: {e}")
@@ -97,12 +115,16 @@ async def resolve_amazon_url(url: str) -> str:
 
 
 # Unified ASIN extraction method - always use Playwright for reliability
-async def extract_amazon_asin(url: str) -> str:
+async def extract_amazon_asin(text: str) -> str:
     """
     Extract ASIN using Playwright for all Amazon URLs for maximum reliability.
     Supports short links like amzn.to and a.co as well as regular Amazon URLs.
+    Accepts text containing a URL and other content.
     """
-    # Always resolve URL with Playwright for consistency and reliability
+    url = extract_first_amazon_url(text)
+    if not url:
+        print(f"No valid Amazon URL found in input: {text}")
+        return None
     resolved_url = await resolve_amazon_url(url)
     if resolved_url:
         return extract_asin_from_url_path(resolved_url)

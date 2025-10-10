@@ -3,6 +3,11 @@ import re
 import httpx
 from urllib.parse import urlparse, parse_qs
 from playwright.async_api import async_playwright
+import asyncio
+
+
+# Limit to 10 concurrent Playwright browsers (adjust as needed)
+playwright_semaphore = asyncio.Semaphore(10)
 
 
 # Extract product name and price from Flipkart product page HTML
@@ -57,36 +62,37 @@ def extract_pid_from_url_path(url: str) -> str:
 async def resolve_flipkart_url(url: str) -> str:
     """Use Playwright to resolve any Flipkart URL, including short links."""
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(
-                headless=True,
-                args=[
-                    '--no-sandbox',
-                    '--disable-blink-features=AutomationControlled',
-                    '--disable-web-security',
-                    '--disable-dev-shm-usage',
-                    '--no-first-run'
-                ]
-            )
-            context = await browser.new_context(
-                viewport={'width': 1366, 'height': 768},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
-            )
-            page = await context.new_page()
-            
-            # Hide automation indicators
-            await page.add_init_script("""
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined,
-                });
-            """)
-            
-            await page.goto(url, timeout=10000, wait_until='commit')
-            await page.wait_for_timeout(800)
-            final_url = page.url
-            
-            await browser.close()
-            return final_url
+        async with playwright_semaphore:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=[
+                        '--no-sandbox',
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-web-security',
+                        '--disable-dev-shm-usage',
+                        '--no-first-run'
+                    ]
+                )
+                context = await browser.new_context(
+                    viewport={'width': 1366, 'height': 768},
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+                )
+                page = await context.new_page()
+                
+                # Hide automation indicators
+                await page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined,
+                    });
+                """)
+                
+                await page.goto(url, timeout=10000, wait_until='commit')
+                await page.wait_for_timeout(800)
+                final_url = page.url
+                
+                await browser.close()
+                return final_url
             
     except Exception as e:
         print(f"Playwright failed to resolve Flipkart URL: {e}")
@@ -104,6 +110,33 @@ async def resolve_flipkart_url(url: str) -> str:
 async def extract_flipkart_pid(url: str) -> str:
     """Extract Flipkart product ID using Playwright for all URLs."""
     # Always resolve URL with Playwright for consistency and reliability
+    resolved_url = await resolve_flipkart_url(url)
+    if resolved_url:
+        return extract_pid_from_url_path(resolved_url)
+    return None
+
+
+def extract_first_flipkart_url(text: str) -> str:
+    """
+    Extract the first valid Flipkart URL (including short links) from a string.
+    """
+    url_pattern = r"https?://(?:www\.|fkrt\.it|flipkart\.)[\w\./\-\?=]+"
+    match = re.search(url_pattern, text)
+    if match:
+        return match.group(0)
+    return None
+
+
+# Unified PID extraction method - always use Playwright for reliability
+async def extract_flipkart_pid(text: str) -> str:
+    """
+    Extract Flipkart product ID using Playwright for all URLs.
+    Accepts text containing a URL and other content.
+    """
+    url = extract_first_flipkart_url(text)
+    if not url:
+        print(f"No valid Flipkart URL found in input: {text}")
+        return None
     resolved_url = await resolve_flipkart_url(url)
     if resolved_url:
         return extract_pid_from_url_path(resolved_url)

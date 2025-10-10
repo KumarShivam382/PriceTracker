@@ -5,51 +5,54 @@ from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright   
 import random
 import string
+import asyncio
+
+# Limit to 10 concurrent Playwright browsers
+playwright_semaphore = asyncio.Semaphore(10)
 
 async def playwright_fetch(url):
-    async with async_playwright() as p:
-        # Launch browser with enhanced anti-detection
-        browser = await p.chromium.launch(
-            headless=True,
-            args=[
-                '--no-sandbox',
-                '--disable-blink-features=AutomationControlled',
-                '--disable-web-security',
-                '--disable-features=VizDisplayCompositor',
-                '--disable-dev-shm-usage',
-                '--no-first-run',
-                '--start-minimized'
-            ]
-        )
-        
-        # Create context with realistic settings
-        context = await browser.new_context(
-            viewport={'width': 1366, 'height': 768},
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
-        )
-        
-        page = await context.new_page()
-        
-        # Hide automation indicators
-        await page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined,
-            });
+    async with playwright_semaphore:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    '--no-sandbox',
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor',
+                    '--disable-dev-shm-usage',
+                    '--no-first-run',
+                    '--start-minimized'
+                ]
+            )
             
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => [1, 2, 3, 4, 5],
-            });
+            context = await browser.new_context(
+                viewport={'width': 1366, 'height': 768},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+            )
             
-            Object.defineProperty(navigator, 'languages', {
-                get: () => ['en-US', 'en'],
-            });
-        """)
-        
-        await page.goto(url, timeout=8000, wait_until='commit')
-        await page.wait_for_timeout(800)  # Brief delay for dynamic content
-        html = await page.content()
-        await browser.close()
-        return html
+            page = await context.new_page()
+            
+            # Hide automation indicators
+            await page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined,
+                });
+                
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5],
+                });
+                
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en'],
+                });
+            """)
+            
+            await page.goto(url, timeout=8000, wait_until='commit')
+            await page.wait_for_timeout(800)  # Brief delay for dynamic content
+            html = await page.content()
+            await browser.close()
+            return html
 
 async def scrapper(url: str):
     try:
@@ -63,25 +66,26 @@ async def scrapper(url: str):
 async def expand_url(url: str) -> str:
     """Expand shortened URLs to their final destination using Playwright only."""
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True, args=[
-                '--no-sandbox',
-                '--disable-blink-features=AutomationControlled',
-                '--disable-web-security',
-                '--disable-dev-shm-usage',
-                '--no-first-run',
-                '--start-minimized'
-            ])
-            context = await browser.new_context(
-                viewport={'width': 1366, 'height': 768},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
-            )
-            page = await context.new_page()
-            await page.goto(url, timeout=8000, wait_until='commit')
-            await page.wait_for_timeout(800)
-            final_url = page.url
-            await browser.close()
-            return final_url
+        async with playwright_semaphore:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True, args=[
+                    '--no-sandbox',
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-web-security',
+                    '--disable-dev-shm-usage',
+                    '--no-first-run',
+                    '--start-minimized'
+                ])
+                context = await browser.new_context(
+                    viewport={'width': 1366, 'height': 768},
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+                )
+                page = await context.new_page()
+                await page.goto(url, timeout=8000, wait_until='commit')
+                await page.wait_for_timeout(800)
+                final_url = page.url
+                await browser.close()
+                return final_url
     except Exception as e:
         print(f"❌ Playwright expand_url error: {e}")
     return url
