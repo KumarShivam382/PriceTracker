@@ -14,6 +14,7 @@ import aioredis
 import time
 import re
 import asyncio
+import urllib.parse
 
 logger = logging.getLogger(__name__)
 
@@ -164,130 +165,100 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         # --- End rate limiting ---
         
-        if user_input.startswith("http://") or user_input.startswith("https://"):
-                
-            loading_msg = await update.message.reply_text("🔍 Validating URL...")
-
-            # Expand the URL before scraping with timeout
-            try:
-                await loading_msg.edit_text("🌐 Resolving short links if present...")
-                # Extract the first URL from the user message (commonly used)
-                # Extract URL starting at first http(s) and cut at first space
-                http_idx = user_input.find("http")
-                if http_idx != -1:
-                    space_idx = user_input.find(" ", http_idx)
-                    if space_idx == -1:
-                        url_to_expand = user_input[http_idx:]
-                    else:
-                        url_to_expand = user_input[http_idx:space_idx]
-
-                    # Strip surrounding whitespace and common punctuation
-                    url_to_expand = url_to_expand.strip().rstrip('.,;:!?)\"\'')
-                    url_to_expand = url_to_expand.lstrip('(<"\'')
-                    logger.info(f"Extracted URL to expand from message: {url_to_expand}")
-                else:
-                    await loading_msg.edit_text("❌ No valid URL found in the message. Please send a proper product link.")
-                    return
-
-                # Add total timeout wrapper for the entire scraping process
-                expanded_url = await asyncio.wait_for(expand_url(url_to_expand), timeout=12.0)
-                logger.info(f"Expanded URL: {expanded_url}")
-
-                await loading_msg.edit_text("📄 Loading product page...")
-                html, final_url = await asyncio.wait_for(scrapper(expanded_url), timeout=15.0)
-                logger.info(f"Fetched URL: {final_url}")
-
-                if not html:
-                    await loading_msg.edit_text("❌ Failed to load the webpage. The site might be blocking requests or taking too long.")
-                    return
-
-                # save_html_for_debug(final_url, html)
-            except asyncio.TimeoutError:
-                logger.error(f"Timeout while processing URL {user_input}")
-                await loading_msg.edit_text("⏰ Request timed out. The website is taking too long to respond. Please try again later.")
+        # --- Robust URL extraction using regex ---
+        # This regex matches the first valid http/https URL, including query and fragment, and ignores trailing text
+        url_match = re.search(r'(https?://[\w\-\.]+(?:/[\w\-\.\/%\?=&#]*)?(?:\?[\w\-\.\/%\?=&#]*)?(?:#[\w\-\.\/%\?=&#]*)?)', user_input)
+        if url_match:
+            url_to_expand = url_match.group(1)
+            # Strip surrounding whitespace and common punctuation
+            url_to_expand = url_to_expand.strip().rstrip('.,;:!?)"\'')
+            url_to_expand = url_to_expand.lstrip('(<"\'')
+            # Validate parsed URL
+            parsed = urllib.parse.urlparse(url_to_expand)
+            logger.info(f"Parsed URL: {parsed}")
+            if not parsed.scheme or not parsed.netloc:
+                await update.message.reply_text("❌ Could not parse a valid URL. Please send a proper product link.")
                 return
-            except Exception as e:
-                logger.error(f"Error expanding/scraping URL {user_input}: {e}")
-                await loading_msg.edit_text("❌ Failed to access the webpage. Please check the URL and try again.")
+            # Percent-encode path/query to avoid accidental spaces or invalid chars
+            safe_path = urllib.parse.quote(parsed.path, safe='/@:+-._~')
+            safe_query = urllib.parse.quote_plus(parsed.query, safe='=&')
+            url_to_expand = urllib.parse.urlunparse((parsed.scheme, parsed.netloc, safe_path, '', safe_query, ''))
+            logger.info(f"Extracted URL to expand from message: {url_to_expand}")
+        else:
+            await update.message.reply_text("❌ No valid URL found in the message. Please send a proper product link.")
+            return
+
+        try:
+            loading_msg = await update.message.reply_text("🌐 Resolving short links if present...")
+            expanded_url = await asyncio.wait_for(expand_url(url_to_expand), timeout=12.0)
+            logger.info(f"Expanded URL: {expanded_url}")
+            await loading_msg.edit_text("📄 Loading product page...")
+            html, final_url = await asyncio.wait_for(scrapper(expanded_url), timeout=15.0)
+            logger.info(f"Fetched URL: {final_url}")
+            if not html:
+                await loading_msg.edit_text("❌ Failed to load the webpage. The site might be blocking requests or taking too long.")
                 return
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout while processing URL {user_input}")
+            await loading_msg.edit_text("⏰ Request timed out. The website is taking too long to respond. Please try again later.")
+            return
+        except Exception as e:
+            logger.error(f"Error expanding/scraping URL {user_input}: {e}")
+            await loading_msg.edit_text("❌ Failed to access the webpage. Please check the URL and try again.")
+            return
 
-            domain = urlparse(final_url).netloc.replace("www.", "")
-            price = None
-            product_id = None
-            product_name = None
+        domain = urlparse(final_url).netloc.replace("www.", "")
+        price = None
+        product_id = None
+        product_name = None
 
-            try:
-                if "amazon" in domain:
-                    print("Detected Amazon URL")
-                    await loading_msg.edit_text("🛒 Extracting Amazon product details...")
-                    price, product_name = await extract_amazon_price_and_name(html)
-                    product_id = await extract_amazon_asin(final_url)
-                elif "flipkart" in domain:
-                    print("Detected Flipkart URL")
-                    await loading_msg.edit_text("🛍️ Extracting Flipkart product details...")
-                    price, product_name = await extract_flipkart_price_and_name(html)
-                    product_id = await extract_flipkart_pid(final_url)
-                else:
-                    await loading_msg.edit_text("❌ Unsupported website. Please use Amazon or Flipkart product links.")
-                    return
-            except Exception as e:
-                logger.error(f"Error extracting price/product info: {e}")
-                await loading_msg.edit_text("❌ Failed to extract product information. Please try again later.")
+        try:
+            if "amazon" in domain:
+                print("Detected Amazon URL")
+                await loading_msg.edit_text("🛒 Extracting Amazon product details...")
+                price, product_name = await extract_amazon_price_and_name(html)
+                product_id = await extract_amazon_asin(final_url)
+            elif "flipkart" in domain:
+                print("Detected Flipkart URL")
+                await loading_msg.edit_text("🛍️ Extracting Flipkart product details...")
+                price, product_name = await extract_flipkart_price_and_name(html)
+                product_id = await extract_flipkart_pid(final_url)
+            else:
+                await loading_msg.edit_text("❌ Unsupported website. Please use Amazon or Flipkart product links.")
                 return
+        except Exception as e:
+            logger.error(f"Error extracting price/product info: {e}")
+            await loading_msg.edit_text("❌ Failed to extract product information. Please try again later.")
+            return
 
-            # --- Store user and product in DB ---
-            try:
-                await loading_msg.edit_text("💾 Saving to database...")
-                session = Session()
-                user = session.query(User).filter_by(telegram_id=telegram_id).first()
-                if not user:
-                    user = User(telegram_id=telegram_id, username=username)
-                    session.add(user)
-                    session.commit()
-                if not product_id:
-                    await loading_msg.edit_text("❌ Could not extract a valid product ID from the link. Please check the URL.")
-                    return
-                # Check if product exists, else create
-                product = session.query(Product).filter_by(product_id=product_id).first()
-                if not product:
-                    product = Product(
-                        product_id=product_id,
-                        product_url=final_url,
-                        last_known_price=price,
-                        product_name=product_name
-                    )
-                    session.add(product)
-                    session.commit()
-                
-                # Check if user is already tracking this product
-                if product in user.tracked_products:
-                    logger.info(f"Product already tracked for user {telegram_id}: {product_id}")
-                    await loading_msg.edit_text("ℹ️ This product is already being tracked.")
-                    await send_price_card(
-                        bot=context.bot,
-                        chat_id=update.effective_chat.id,
-                        product_url=final_url,
-                        price=price,
-                        product_id=product_id,
-                        product_name=product_name
-                    )
-                    return
-                else:
-                    user.tracked_products.append(product)
-                    session.commit()
-                    logger.info(f"✅ Saved to DB: User {telegram_id}, Price {price}, Product ID {product_id}")
-            except Exception as db_error:
-                logger.error(f"Database error for user {telegram_id}: {db_error}")
-                session.rollback()
-                await loading_msg.edit_text("❌ Database error. Please try again later.")
+        # --- Store user and product in DB ---
+        try:
+            await loading_msg.edit_text("💾 Saving to database...")
+            session = Session()
+            user = session.query(User).filter_by(telegram_id=telegram_id).first()
+            if not user:
+                user = User(telegram_id=telegram_id, username=username)
+                session.add(user)
+                session.commit()
+            if not product_id:
+                await loading_msg.edit_text("❌ Could not extract a valid product ID from the link. Please check the URL.")
                 return
-            finally:
-                session.close()
-            # --- End DB logic ---
-
-            if price is not None:
-                await loading_msg.edit_text("✅ Creating product card...")
-                # Send card with Buy Now and Stop Tracking buttons
+            # Check if product exists, else create
+            product = session.query(Product).filter_by(product_id=product_id).first()
+            if not product:
+                product = Product(
+                    product_id=product_id,
+                    product_url=final_url,
+                    last_known_price=price,
+                    product_name=product_name
+                )
+                session.add(product)
+                session.commit()
+            
+            # Check if user is already tracking this product
+            if product in user.tracked_products:
+                logger.info(f"Product already tracked for user {telegram_id}: {product_id}")
+                await loading_msg.edit_text("ℹ️ This product is already being tracked.")
                 await send_price_card(
                     bot=context.bot,
                     chat_id=update.effective_chat.id,
@@ -296,12 +267,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     product_id=product_id,
                     product_name=product_name
                 )
-                await loading_msg.delete()
+                return
             else:
-                await loading_msg.edit_text("❌ Couldn't find price on this page. The product might be unavailable or the page format changed.")
+                user.tracked_products.append(product)
+                session.commit()
+                logger.info(f"✅ Saved to DB: User {telegram_id}, Price {price}, Product ID {product_id}")
+        except Exception as db_error:
+            logger.error(f"Database error for user {telegram_id}: {db_error}")
+            session.rollback()
+            await loading_msg.edit_text("❌ Database error. Please try again later.")
+            return
+        finally:
+            session.close()
+        # --- End DB logic ---
+
+        if price is not None:
+            await loading_msg.edit_text("✅ Creating product card...")
+            # Send card with Buy Now and Stop Tracking buttons
+            await send_price_card(
+                bot=context.bot,
+                chat_id=update.effective_chat.id,
+                product_url=final_url,
+                price=price,
+                product_id=product_id,
+                product_name=product_name
+            )
+            await loading_msg.delete()
         else:
-            await update.message.reply_text("📝 Please send me a valid product link from Amazon or Flipkart to start tracking!")
-    
+            await loading_msg.edit_text("❌ Couldn't find price on this page. The product might be unavailable or the page format changed.")
     except Exception as e:
         logger.error(f"Unexpected error in handle_message for user {update.effective_user.id}: {e}")
         try:

@@ -7,7 +7,8 @@ import urllib.parse
 async def send_price_card(bot, chat_id, product_url, price, product_id, product_name=None):
     from datetime import datetime
     now_str = datetime.now().strftime('%d %b %Y, %H:%M')
-    text = f"<b>The Product has Started Tracking!</b>\n\n"
+    text = f"<b>Product tracking has started!</b>\n\n"
+    text += "Sit back and relax — you'll be notified when the price changes.\n\n"
     text += f"☀️ <b>{product_name or 'Product'}</b>\n\n"
     text += f"Current Price: <b>{price}</b>\n\n"
     text += f"<a href='{product_url}'>Click here to open in Amazon!</a>\n\n"
