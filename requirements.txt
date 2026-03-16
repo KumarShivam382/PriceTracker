@@ -8,3 +8,4 @@ lxml
 playwright
 aioredis
 alembic
+aiokafka
